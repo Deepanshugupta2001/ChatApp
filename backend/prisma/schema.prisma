@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String   @unique
+  password  String
+  isOnline  Boolean  @default(false)
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  directConvoA DirectConversation[] @relation("directConversationA")
+  directConvoB DirectConversation[] @relation("directConversationB")
+  messages     Messages[]           @relation("userMessages")
+
+  groups            Groups[]            @relation("groupCreator")
+  groupParticipants GroupParticipants[] @relation("groupMember")
+  groupMessages GroupMessages[] @relation("userReadMsg")
+  status Status?
+  stories Story[]
+
+  @@index([email])
+  @@index([isOnline])
+} 
+
+model Status {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  status    String   @default("hey! I am using ChatApp") @db.VarChar(250)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Story {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  image       Bytes
+  contentType String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Messages {
+  id          String      @id @default(uuid()) @db.Uuid
+  text        String
+  type        MessageType @default(TEXT)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  isDelivered Boolean     @default(false)
+  isRead      Boolean     @default(false)
+
+  senderId       String  @db.Uuid
+  conversationId String? @db.Uuid
+
+  sender       User                @relation("userMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation DirectConversation? @relation("convoMessages", fields: [conversationId], references: [id], onDelete: Cascade)
+
+  groupId String? @db.Uuid
+  group   Groups? @relation("groupMessages", fields: [groupId], references: [id], onDelete: Cascade)
+
+  groupMessages GroupMessages[] @relation("isMsgRead")
+
+  @@index([senderId])
+  @@index([conversationId])
+  @@index([groupId]) 
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VOICE
+}
+
+// many to many relationship defining table for user and messages
+// one user can have many msgs, and one msg can be same for mamy users
+
+model DirectConversation {
+  id        String   @id @default(uuid()) @db.Uuid
+  userAId   String   @db.Uuid
+  userBId   String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userA    User       @relation("directConversationA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB    User       @relation("directConversationB", fields: [userBId], references: [id], onDelete: Cascade)
+  messages Messages[] @relation("convoMessages")
+
+  @@unique([userAId, userBId])
+  @@index([userAId])
+  @@index([userBId])
+}
+
+model Groups {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  creatorId   String   @db.Uuid
+  memberCount Int      @default(0)
+
+  creator      User                @relation("groupCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  participants GroupParticipants[] @relation("groupReference")
+  messages     Messages[]          @relation("groupMessages")
+
+  @@index([id])
+  @@index([creatorId])
+}
+
+model GroupParticipants {
+  id      String @id @default(uuid()) @db.Uuid
+  groupId String @db.Uuid
+  userId  String @db.Uuid
+
+  user  User   @relation("groupMember", fields: [userId], references: [id], onDelete: Cascade)
+  group Groups @relation("groupReference", fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, groupId])
+}
+
+model GroupMessages{
+  id  String  @id @default(uuid()) @db.Uuid
+  messageId String @db.Uuid
+  userId  String  @db.Uuid
+  isRead  Boolean @default(false)
+
+  message Messages @relation("isMsgRead" ,fields: [messageId], references: [id], onDelete: Cascade)
+  user    User     @relation("userReadMsg", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@index([messageId])
+}
